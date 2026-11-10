@@ -4,6 +4,7 @@ from playwright.sync_api import sync_playwright
 
 PATH_TO_VIDEO_FOLDER = "./video"
 
+_LAST_MOUSE_POSITION = (0, 0)
 
 CURSOR_SCRIPT = """
 (() => {
@@ -16,6 +17,8 @@ CURSOR_SCRIPT = """
 
         #automation-cursor-highlight {
             position: fixed;
+            left: -100px;
+            top: -100px;
             width: 64px;
             height: 64px;
             border-radius: 50%;
@@ -23,26 +26,31 @@ CURSOR_SCRIPT = """
             pointer-events: none;
             z-index: 2147483646;
             transform: translate(-50%, -50%);
+            opacity: 0;
         }
 
         #automation-cursor {
             position: fixed;
+            left: -100px;
+            top: -100px;
             width: 32px;
             height: 32px;
             pointer-events: none;
             z-index: 2147483647;
+            opacity: 0;
         }
 
         .automation-click-ripple {
             position: fixed;
             width: 8px;
             height: 8px;
-            border: 2px solid rgba(255, 220, 0, 0.9);
+            border: 2px solid rgba(255, 220, 0, 0.95);
+            background: rgba(255, 220, 0, 0.12);
             border-radius: 50%;
             pointer-events: none;
             z-index: 2147483645;
             transform: translate(-50%, -50%);
-            animation: automation-ripple 0.5s ease-out forwards;
+            animation: automation-ripple 0.6s ease-out forwards;
         }
 
         @keyframes automation-ripple {
@@ -52,8 +60,8 @@ CURSOR_SCRIPT = """
                 opacity: 1;
             }
             to {
-                width: 64px;
-                height: 64px;
+                width: 56px;
+                height: 56px;
                 opacity: 0;
             }
         }
@@ -84,11 +92,19 @@ CURSOR_SCRIPT = """
         const x = event.clientX;
         const y = event.clientY;
 
+        // Игнорируем автоматическое перемещение в левый верхний угол.
+        if (x === 0 && y === 0) {
+            return;
+        }
+
         highlight.style.left = `${x}px`;
         highlight.style.top = `${y}px`;
 
         cursor.style.left = `${x}px`;
         cursor.style.top = `${y}px`;
+
+        cursor.style.opacity = "1";
+        highlight.style.opacity = "1";
     }, true);
 
     document.addEventListener("click", (event) => {
@@ -110,16 +126,30 @@ CURSOR_SCRIPT = """
 })();
 """
 
-
 def _move_mouse_smoothly(page, x, y):
-    """Move the mouse to the target point with intermediate steps."""
-    page.mouse.move(x, y, steps=30)
-    page.wait_for_timeout(100)
+    global _LAST_MOUSE_POSITION
 
+    """Move the mouse with smooth acceleration and deceleration."""
+
+    start_x, start_y = _LAST_MOUSE_POSITION
+    steps = 30
+
+    for step in range(1, steps + 1):
+        t = step / steps
+        progress = t * t * (3 - 2 * t)
+        offset = 4 * progress * (1 - progress) * 12
+        current_x = start_x + (x - start_x) * progress + offset
+        current_y = start_y + (y - start_y) * progress + offset
+
+        page.mouse.move(current_x, current_y)
+        _LAST_MOUSE_POSITION = (current_x, current_y)
+
+        page.wait_for_timeout(8)
 
 def _click_locator(page, locator):
     """Move the mouse to the center of an element and click it."""
     locator.wait_for(state="visible", timeout=30000)
+    locator.scroll_into_view_if_needed()
 
     bounds = locator.bounding_box()
     if bounds is None:
@@ -129,8 +159,11 @@ def _click_locator(page, locator):
     y = bounds["y"] + bounds["height"] / 2
 
     _move_mouse_smoothly(page, x, y)
-    page.mouse.click(x, y)
 
+    # Brief pause before clicking.
+    page.wait_for_timeout(200)
+
+    page.mouse.click(x, y)
 
 def ShowCallout(page, text, bgColor="yellow", textColor="black", fade=True):
     """Display a short notification on the page."""
@@ -177,7 +210,6 @@ def ShowCallout(page, text, bgColor="yellow", textColor="black", fade=True):
         },
     )
 
-
 def _make_video_filename(company_name):
     """Create a safe video filename from the company name."""
     invalid_chars = '<>:"/\\|?*'
@@ -192,7 +224,6 @@ def _make_video_filename(company_name):
 
     return filename + ".webm"
 
-
 def CaptureVideo_Magento(
     url,
     company_name,
@@ -203,6 +234,8 @@ def CaptureVideo_Magento(
     street,
     house_no,
 ):
+    global _LAST_MOUSE_POSITION
+    _LAST_MOUSE_POSITION = (0, 0)
     page = None
     os.makedirs(PATH_TO_VIDEO_FOLDER, exist_ok=True)
     output_folder = os.path.abspath(PATH_TO_VIDEO_FOLDER)
@@ -266,9 +299,8 @@ def CaptureVideo_Magento(
                 f"{company_name}: searching for Magento developers in {city}",
             )
 
-            search_box = page.locator(
-                'input[name="q"]:visible, textarea[name="q"]:visible'
-            ).first
+            
+
             search_box.evaluate("""
                 element => {
                     const form = element.closest("form");
@@ -291,13 +323,14 @@ def CaptureVideo_Magento(
                 }
             """)
             _click_locator(page, search_box)
-
+            page.wait_for_timeout(500)
             query = f"Magento developer in {city}"
             search_box.fill("")
             search_box.type(query, delay=110)
-            search_box.press("Enter")
+            _click_locator(page, page.locator("#sb_hp_go"))
             page.wait_for_url("**/search?**", timeout=30000)
             page.wait_for_load_state("domcontentloaded")
+            _restore_cursor(page)
 
             first_result = page.locator(
                 "#b_results li.b_algo h2 a:visible"
@@ -312,6 +345,7 @@ def CaptureVideo_Magento(
             _click_locator(page, first_result)
 
             page.wait_for_load_state("domcontentloaded", timeout=30000)
+            _restore_cursor(page)
             page.wait_for_timeout(2000)
             address = ", ".join(
                 part.strip()
@@ -420,3 +454,6 @@ def _get_browser_locale(language, country):
         return "en-US"
 
     return f"{lang}-{country_code}"
+
+def _restore_cursor(page):
+    page.mouse.move(*_LAST_MOUSE_POSITION)
