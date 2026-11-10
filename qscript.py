@@ -127,9 +127,10 @@ CURSOR_SCRIPT = """
 """
 
 def _move_mouse_smoothly(page, x, y):
-    global _LAST_MOUSE_POSITION
 
     """Move the mouse with smooth acceleration and deceleration."""
+
+    global _LAST_MOUSE_POSITION
 
     start_x, start_y = _LAST_MOUSE_POSITION
     steps = 30

@@ -19,12 +19,14 @@ The script reads company and location data from a CSV file, opens the specified 
 ## Project structure
 
 ```text
-recorder/
-├── qscript.py          # Main automation logic
-├── capture_video.py    # CSV processing and execution entry point
-├── input.csv           # Input data
-├── requirements.txt    # Python dependencies
-└── video/              # Generated recordings
+automation-recorder/
+├── examples/
+│   └── example-output.webm
+├── qscript.py
+├── capture_video.py
+├── input.csv
+├── requirements.txt
+└── README.md
 ```
 
 The `video/` directory is created automatically if it does not exist.
@@ -43,7 +45,7 @@ The project uses Python standard-library modules for CSV processing and file man
 
 ```bash
 git clone https://github.com/Contary925/automation-recorder/
-cd recorder
+cd automation-recorder
 ```
 
 ### 2. Create a virtual environment
